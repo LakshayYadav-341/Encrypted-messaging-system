@@ -1,101 +1,322 @@
-import React from 'react';
-import AuthLayout from './AuthLayout';
-import InputField from '../../Common/InputField';
-import Button from '../../Common/Button';
+/* eslint-disable jsx-a11y/anchor-is-valid */
+import React, { useState } from "react";
+import AuthLayout from "./AuthLayout";
+import axios from "axios";
+import { Copy, Check, Shield, AlertTriangle, XCircle } from "lucide-react";
+import Button from "../../Common/Button";
+import { backendUrl } from "../../constant";
+import { useNavigate } from "react-router-dom";
+
+const elliptic = require("elliptic");
+
+const ec = new elliptic.ec("p256");
 
 const Signup = () => {
-  return (
-    <AuthLayout 
-      title="Create an account" 
-      subtitle="Enter your details to get started"
-    >
-      <form className="p-6 pt-0 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <InputField
-            label="First name"
-            type="text"
-            placeholder="John"
-          />
-          <InputField
-            label="Last name"
-            type="text"
-            placeholder="Doe"
-          />
-        </div>
-        
-        <InputField
-          label="Email address"
-          type="email"
-          placeholder="name@example.com"
-        />
-        
-        <InputField
-          label="Password"
-          type="password"
-          placeholder="Create a password"
-        />
-        
-        <InputField
-          label="Confirm password"
-          type="password"
-          placeholder="Confirm your password"
-        />
+    const navigate = useNavigate();
+    const [privateKey, setPrivateKey] = useState(null);
+    const [publicKey, setPublicKey] = useState(null);
+    const [isKeyGenerated, setIsKeyGenerated] = useState(false);
+    const [showKeyPopup, setShowKeyPopup] = useState(false);
+    const [isTermsAccepted, setIsTermsAccepted] = useState(false);
+    const [formData, setFormData] = useState({
+        firstName: "",
+        lastName: "",
+    });
+    const [errors, setErrors] = useState({
+        firstName: "",
+        lastName: "",
+    });
+    const [globalError, setGlobalError] = useState(null);
+    const [copiedKey, setCopiedKey] = useState({
+        private: false,
+        public: false,
+    });
 
-        <div className="flex items-start space-x-2 pt-2">
-          <input
-            type="checkbox"
-            className="mt-1 rounded border-gray-700 bg-gray-800 text-purple-600 focus:ring-purple-500"
-          />
-          <label className="text-sm text-gray-400">
-            I agree to the{' '}
-            <a href="#" className="text-purple-400 hover:text-purple-300">Terms of Service</a>
-            {' '}and{' '}
-            <a href="#" className="text-purple-400 hover:text-purple-300">Privacy Policy</a>
-          </label>
-        </div>
+    const validateForm = () => {
+        const newErrors = { firstName: "", lastName: "" };
+        let isValid = true;
 
-        <Button type="submit">Create account</Button>
+        if (!formData.firstName.trim()) {
+            newErrors.firstName = "First name is required";
+            isValid = false;
+        }
 
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-700"></div>
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-gray-900 px-2 text-gray-400">Or continue with</span>
-          </div>
-        </div>
+        if (!formData.lastName.trim()) {
+            newErrors.lastName = "Last name is required";
+            isValid = false;
+        }
 
-        <div className="grid grid-cols-2 gap-4">
-          <Button variant="secondary">
-            <div className="flex items-center justify-center gap-2">
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-              Google
+        setErrors(newErrors);
+        return isValid;
+    };
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormData((prev) => ({
+            ...prev,
+            [name]: value,
+        }));
+        setErrors((prev) => ({
+            ...prev,
+            [name]: "",
+        }));
+    };
+
+    const genKeyPair = () => {
+        try {
+            const keyPair = ec.genKeyPair();
+
+            const privateKeyHex = keyPair.getPrivate("hex");
+            const publicKeyPoint = keyPair.getPublic();
+            const publicKeyHex = {
+                x: publicKeyPoint.getX().toString(16),
+                y: publicKeyPoint.getY().toString(16),
+            };
+
+            setPrivateKey(privateKeyHex);
+            setPublicKey(publicKeyHex);
+            setIsKeyGenerated(true);
+            setShowKeyPopup(true);
+        } catch (error) {
+            setGlobalError(
+                "An error occurred while generating the key pair. Please try again."
+            );
+        }
+    };
+
+    const handleCopyKey = (keyType) => {
+        try {
+            const keyText =
+                keyType === "private"
+                    ? privateKey
+                    : `X: ${publicKey.x}\n\nY: ${publicKey.y}`;
+
+            navigator.clipboard.writeText(keyText);
+            setCopiedKey((prev) => ({ ...prev, [keyType]: true }));
+            setTimeout(
+                () => setCopiedKey((prev) => ({ ...prev, [keyType]: false })),
+                2000
+            );
+        } catch (error) {
+            setGlobalError(
+                `Failed to copy the ${keyType} key. Please try again.`
+            );
+        }
+    };
+
+    const handleContinue = async () => {
+        if (validateForm() && isKeyGenerated && isTermsAccepted) {
+            try {
+                const response = await axios.post(`${backendUrl}/register/`, {
+                    formData,
+                    publicKey,
+                });
+                if (!response) {
+                    setGlobalError("some error occured!");
+                    return;
+                }
+                localStorage.setItem("privateKey", privateKey);
+
+                console.log("Signup form submitted", formData);
+                navigate("/");
+            } catch (error) {
+                setGlobalError(
+                    error.response?.data?.message ||
+                        "Failed to complete the signup process. Please try again."
+                );
+            }
+        } else {
+            setGlobalError(
+                "Please fill out all fields, accept terms, and generate keys before continuing."
+            );
+        }
+    };
+
+    return (
+        <AuthLayout
+            title="Create an account"
+            subtitle="Enter your details to get started"
+        >
+            <div className="p-6 pt-0 space-y-6 bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+                {globalError && (
+                    <div className="bg-red-100 dark:bg-red-900 border border-red-500 text-red-600 dark:text-red-300 rounded-lg p-4 mb-4 flex items-start space-x-2">
+                        <XCircle className="w-6 h-6" />
+                        <span>{globalError}</span>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <div className="relative">
+                            <div className="group relative rounded-lg border border-gray-300 dark:border-gray-700 focus-within:border-purple-500 px-3 pb-1.5 pt-2.5 duration-200 focus-within:ring focus-within:ring-purple-500/20">
+                                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 group-focus-within:text-purple-600 dark:group-focus-within:text-purple-400">
+                                    First Name
+                                </label>
+                                <input
+                                    type={"text"}
+                                    placeholder={"John"}
+                                    name="firstName"
+                                    onChange={handleInputChange}
+                                    className="block w-full border-0 bg-transparent p-0 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-0 text-gray-900 dark:text-white sm:leading-7"
+                                />
+                            </div>
+                        </div>
+
+                        {errors.firstName && (
+                            <p className="text-xs text-red-500 mt-1">
+                                {errors.firstName}
+                            </p>
+                        )}
+                    </div>
+                    <div>
+                        <div className="relative">
+                            <div className="group relative rounded-lg border border-gray-300 dark:border-gray-700 focus-within:border-purple-500 px-3 pb-1.5 pt-2.5 duration-200 focus-within:ring focus-within:ring-purple-500/20">
+                                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 group-focus-within:text-purple-600 dark:group-focus-within:text-purple-400">
+                                    Last Name
+                                </label>
+                                <input
+                                    type={"text"}
+                                    placeholder={"Doe"}
+                                    name="lastName"
+                                    onChange={handleInputChange}
+                                    className="block w-full border-0 bg-transparent p-0 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-0 text-gray-900 dark:text-white sm:leading-7"
+                                />
+                            </div>
+                        </div>
+
+                        {errors.lastName && (
+                            <p className="text-xs text-red-500 mt-1">
+                                {errors.lastName}
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 border border-gray-300 dark:border-gray-700">
+                    <Button onClick={genKeyPair} className="w-full">
+                        Generate Key Pair
+                    </Button>
+                </div>
+
+                {showKeyPopup && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                        <div className="bg-white dark:bg-gray-900 rounded-xl max-w-lg w-full shadow-2xl border border-purple-500/20">
+                            {/* Header */}
+                            <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+                                <div className="flex items-center space-x-2">
+                                    <Shield className="text-purple-400 w-6 h-6" />
+                                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                                        Secure Your Keys
+                                    </h2>
+                                </div>
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-6 space-y-6">
+                                {/* Warning Message */}
+                                <div className="flex items-start space-x-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+                                    <AlertTriangle className="text-yellow-500 w-6 h-6 flex-shrink-0 mt-1" />
+                                    <div>
+                                        <h4 className="font-medium text-yellow-500">
+                                            Important Security Notice
+                                        </h4>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                                            This is the only time your private
+                                            key will be shown. Make sure to save
+                                            it securely, as it cannot be
+                                            retrieved later.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-900 dark:text-gray-300">
+                                            Your Private Key
+                                        </label>
+                                        <div className="flex items-center space-x-2 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700">
+                                            <span className="truncate text-gray-700 dark:text-white text-sm">
+                                                {privateKey}
+                                            </span>
+                                            <button
+                                                onClick={() =>
+                                                    handleCopyKey("private")
+                                                }
+                                                className="flex items-center space-x-1 text-purple-600 dark:text-purple-400 text-sm font-medium"
+                                            >
+                                                {copiedKey.private ? (
+                                                    <Check className="w-4 h-4" />
+                                                ) : (
+                                                    <Copy className="w-4 h-4" />
+                                                )}
+                                                <span>Copy</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-900 dark:text-gray-300">
+                                            Your Public Key
+                                        </label>
+                                        <div className="flex flex-col items-stretch p-3 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700">
+                                            <span className="truncate text-gray-700 dark:text-white text-sm mb-1">
+                                                X: {publicKey?.x}
+                                            </span>
+                                            <span className="truncate text-gray-700 dark:text-white text-sm">
+                                                Y: {publicKey?.y}
+                                            </span>
+                                            <button
+                                                onClick={() =>
+                                                    handleCopyKey("public")
+                                                }
+                                                className="flex items-center self-end space-x-1 text-purple-600 dark:text-purple-400 text-sm font-medium mt-2"
+                                            >
+                                                {copiedKey.public ? (
+                                                    <Check className="w-4 h-4" />
+                                                ) : (
+                                                    <Copy className="w-4 h-4" />
+                                                )}
+                                                <span>Copy</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="bg-gray-50 dark:bg-gray-800 p-6 flex justify-end rounded-b-xl">
+                                <Button onClick={() => setShowKeyPopup(false)}>
+                                    Got it
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex items-center space-x-3">
+                    <input
+                        type="checkbox"
+                        id="termsCheckbox"
+                        className="w-5 h-5"
+                        checked={isTermsAccepted}
+                        onChange={(e) => setIsTermsAccepted(e.target.checked)}
+                    />
+                    <label
+                        htmlFor="termsCheckbox"
+                        className="text-sm font-medium text-gray-600 dark:text-gray-400"
+                    >
+                        I accept the terms and conditions
+                    </label>
+                </div>
+
+                <div className="pt-6">
+                    <Button onClick={handleContinue} className="w-full">
+                        Continue
+                    </Button>
+                </div>
             </div>
-          </Button>
-          <Button variant="secondary">
-            <div className="flex items-center justify-center gap-2">
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"/>
-              </svg>
-              Facebook
-            </div>
-          </Button>
-        </div>
-
-        <p className="text-center text-sm text-gray-400">
-          Already have an account?{' '}
-          <a href="#" className="font-medium text-purple-400 hover:text-purple-300">
-            Sign in
-          </a>
-        </p>
-      </form>
-    </AuthLayout>
-  );
+        </AuthLayout>
+    );
 };
 
 export default Signup;
